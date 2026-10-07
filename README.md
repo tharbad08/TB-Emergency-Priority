@@ -1,70 +1,142 @@
-# TB Emergency Priority — Timberborn 1.1 compatibility & reverse-engineering work
+# TB Emergency Priority — Timberborn 1.1 standalone compatibility
 
-This repository is an **independent compatibility/reverse-engineering project based on the Steam Workshop mod _Emergency Priority [ModContest1]_ by Staviette**:
+This repository is an **independent compatibility and reverse-engineering project based on the Steam Workshop mod _Emergency Priority [ModContest1]_ by Staviette / grantemsley**.
 
-- Workshop: https://steamcommunity.com/sharedfiles/filedetails/?id=3729325910
+- Workshop item: https://steamcommunity.com/sharedfiles/filedetails/?id=3729325910
 - Original mod ID: `grantemsley.EmergencyPriority`
-- Original Workshop version observed: `1.0.0.0`
-- Original dependency: Harmony
+- Original Workshop version examined: `1.0.0.0`
 
-The original Workshop mod and its design belong to its original author. This repository is **not the original source code** and does not imply endorsement by Staviette. The source here is newly written compatibility/audit code based on observed runtime behavior, public Workshop documentation, and Timberborn logs.
+The original design and original binary belong to the original mod author. This repository is not the original source tree and does not imply endorsement by the author.
 
-## Why this exists
+## Standalone package
 
-The Workshop release targets Timberborn 1.0. Timberborn 1.1 changed APIs used by the mod.
+The installable package produced for this project is **one local mod**. It does not require the Workshop mod to be subscribed, installed, or enabled separately.
 
-A confirmed 1.1 crash is:
+For local compatibility testing the package combines:
+
+- the unmodified original Workshop assembly supplied by the user, to preserve the original game behavior;
+- the original localization and thumbnail;
+- a newly written `EmergencyPriority.V11Compat.dll`, whose source is under `StandaloneCompat/`;
+- a Timberborn 1.1 manifest preserving the original mod ID so integrations and existing saves continue to recognize Emergency Priority.
+
+The original Workshop DLL is **not committed to this repository**.
+
+## Full reverse-engineering audit
+
+The supplied Workshop DLL was inspected at .NET metadata and IL level. The functional surface includes the Emergency construction state/registry, UI toggle integration, builder job selection, worker schedule override, sleep override, need selection, carrying behavior, and immediate worker interruption.
+
+The original mod applies Harmony patches to these Timberborn methods:
+
+- `BeaverNeedBehaviorPicker.ShouldPickEssentialAction`
+- `BuilderHubWorkplaceBehavior.Decide`
+- `BuilderPriorityToggleGroupFactory.Create`
+- `CarryRootBehavior.Decide`
+- `DistrictNeedBehaviorService.PickShortestAction`
+- `PriorityToggleGroup.Enable`
+- `PriorityToggleGroup.Disable`
+- `PriorityToggleGroup.UpdateGroup`
+- `PriorityToggle.OnValueChanged`
+- `SleepNeedBehavior.ShouldSleepAtHome`
+- `SleepNeedBehavior.Decide`
+- `SleepNeedBehavior.SleepOutside`
+- `WorkerRootBehavior.Decide`
+
+### What each subsystem does
+
+**Emergency state and persistence**
+
+`EmergencyConstructable` stores the Emergency flag as persistent construction-site state and registers/unregisters unfinished Emergency jobs with `EmergencyConstructionRegistry`.
+
+**Builder selection**
+
+Emergency jobs are considered ahead of ordinary builder work. Reachability is checked from the Builder Hub before starting a construction job.
+
+**Immediate interruption**
+
+When a new Emergency job is registered, assigned builders are inspected. The original `TryInterrupt` can terminate a running need action, wake a sleeping builder, or stop an unrelated hauling action so the builder can immediately reconsider work.
+
+**Schedule override**
+
+Emergency builders can continue working outside their normal work schedule, while still respecting hard work refusal conditions.
+
+**Sleep override**
+
+Emergency builders avoid normal sleep/home behavior while an Emergency job exists. Once sleep becomes critical, they are allowed to sleep on the spot rather than travelling home.
+
+**Critical needs**
+
+Emergency work does not make beavers ignore survival. At critical need levels, the mod selects a nearby viable essential action rather than ordinary preference-based need handling.
+
+**Hauling protection**
+
+A builder already hauling materials to an Emergency construction site is not interrupted.
+
+**UI**
+
+An Emergency toggle is inserted alongside ordinary construction priority controls. Selecting an ordinary priority clears Emergency. The Emergency state is shown in red and has its own tooltip.
+
+## Confirmed Timberborn 1.1 incompatibility
+
+The original 1.0 interruption path directly calls:
+
+`GoodCarrier.CarriedGoods`
+
+That member no longer matches Timberborn 1.1's carrying API. The observed result is:
 
 ```
 MissingMethodException:
 Method not found:
 Timberborn.Goods.GoodAmount Timberborn.Carrying.GoodCarrier.get_CarriedGoods()
-
-grantemsley.EmergencyPriority.EmergencyInterruptionService.TryInterrupt(...)
 ```
 
-A previous binary two-byte workaround avoided that old member reference but left `TryInterrupt` with invalid IL and later caused:
+The earlier local compatibility DLL changed only two bytes in the original assembly. That bypass attempt left the method body with invalid stack/control-flow IL and later produced:
 
 ```
 InvalidProgramException:
-Invalid IL code in
-grantemsley.EmergencyPriority.EmergencyInterruptionService.TryInterrupt(...)
+Invalid IL code in EmergencyInterruptionService.TryInterrupt(...)
 ```
 
-This repository deliberately avoids binary IL surgery.
+That binary edit is not used by the new compatibility layer.
 
-## Current approach
+## 1.1 fix
 
-`Emergency Priority 1.1 Compatibility Audit` is a **separate mod**. It expects the original Workshop mod to be installed.
+The original `TryInterrupt` has exactly one caller in the original assembly: `EmergencyInterruptionService.OnJobRegistered`.
 
-On startup it:
+The standalone compatibility assembly therefore patches the caller and redirects that one invocation to a newly written, valid 1.1 implementation. The broken original method is never executed.
 
-1. Locates the original `grantemsley.EmergencyPriority` assembly.
-2. Patches the caller of the broken `TryInterrupt` method so the malformed method is never JIT-compiled.
-3. Preserves the original Emergency registration / priority flow while temporarily skipping only the immediate "drop current job" step.
-4. Walks **every type and every method body** in the original assembly.
-5. Resolves metadata references used by the IL and records unresolved methods, fields, and types.
-6. Dumps the original mod's type/method/property/field surface to an audit log.
+The replacement:
 
-The audit file is written next to this mod as:
+- supports Timberborn 1.1's `GoodCarrier.CarriedGood.GoodAmount` shape;
+- keeps a legacy `CarriedGoods` fallback for diagnostics;
+- preserves recovered-good spawning before emptying a carrier;
+- preserves stock/capacity reservation release;
+- refuses to interrupt a haul whose destination is already an Emergency site;
+- preflights cargo/reservation operations before mutation;
+- fails safe if a future game update moves another API: the current worker task is left intact rather than risking lost goods or half-released reservations;
+- logs one-time compatibility warnings instead of crashing the game.
 
-`emergency-priority-compat-audit.log`
+## Other compatibility risks found
 
-That gives us one game run that can expose other Timberborn 1.0 → 1.1 API breaks instead of finding them one crash at a time.
+The rest of the original mod is substantially more defensive than the cargo path. Several features reflect private Timberborn fields/methods and already disable only the affected feature if the reflected member cannot be found. Fragile hooks include:
 
-## Known behavior that must ultimately be preserved
+- `BehaviorManager._runningExecutor` / `_runningBehavior`
+- `ApplyEffectExecutor._finishTimestamp`
+- `BuilderHubWorkplaceBehavior._accessible`
+- `ConstructionJob._constructionSiteAccessible`
+- `PriorityToggle._prioritizable`
+- `SleepNeedBehavior._walkedToSleepingPosition`
+- `WorkerRootBehavior._worker`, `_workRefuser`, and `DecideAsWorker`
+- internal need-appraisal fields/members
+- private UI factory/loader fields
 
-The Workshop description says Emergency Priority provides four distinct behaviors for builders:
+No second hard 1.1 crash was demonstrated in the supplied logs. The standalone compatibility assembly probes the most important interruption/carrying members at startup and writes results to `EmergencyPriority_1.1_Compat.log`. This gives one-run evidence if a later Timberborn build changes another internal API.
 
-- Emergency construction outranks normal construction.
-- Builders can abandon their current job and route to an Emergency construction site.
-- Emergency builders keep working outside their normal shift and can sleep at the worksite.
-- When hunger/thirst becomes critical they use the closest viable food/water source instead of their preferred source.
+## Source layout
 
-The compatibility work treats these as separate subsystems and audits all of them.
+- `StandaloneCompat/` — source for the standalone Timberborn 1.1 compatibility assembly.
+- `EmergencyPriorityCompatAudit/` — earlier diagnostic/audit experiment retained for history; not required by the standalone package.
+- `.github/workflows/build-standalone-compat.yml` — clean CI build of the compatibility assembly.
 
-## Important
+## Installation
 
-Do **not** enable the old locally binary-edited `EmergencyPriority_1.1.2.4_Compat` at the same time. Use the unmodified Workshop release plus this compatibility mod.
-
-The immediate compatibility patch intentionally does **not** reproduce the cargo-dropping/interruption code yet. That logic depended on the removed `GoodCarrier.CarriedGoods` API and needs to be rebuilt against the current 1.1 worker/carrying API rather than guessed.
+Use the generated standalone ZIP as a local Timberborn mod. Do not enable the original Workshop copy or the old two-byte `EmergencyPriority_1.1.2.4_Compat` at the same time.
