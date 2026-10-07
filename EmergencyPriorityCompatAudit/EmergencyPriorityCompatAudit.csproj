@@ -10,9 +10,10 @@
     <FileVersion>0.1.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Lib.Harmony" Version="2.4.1" />
+    <Compile Remove="Stubs/**/*.cs" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.4.1" />
     <ProjectReference Include="Stubs/Timberborn.ModManagerScene/Timberborn.ModManagerScene.Stub.csproj" Private="false" />
   </ItemGroup>
 </Project>
