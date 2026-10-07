@@ -1,0 +1,14 @@
+{
+  "Name": "Emergency Priority [ModContest1] - Timberborn 1.1 Standalone Compatibility",
+  "Version": "1.1.0.0",
+  "Id": "grantemsley.EmergencyPriority",
+  "MinimumGameVersion": "1.1.0.0",
+  "Author": "grantemsley (original); Timberborn 1.1 compatibility maintained in tharbad08/TB-Emergency-Priority",
+  "Description": "Standalone local Timberborn 1.1 compatibility package for Emergency Priority [ModContest1]. Preserves the original mod ID and behavior while replacing the obsolete worker-interruption cargo path.",
+  "RequiredMods": [
+    {
+      "Id": "Harmony",
+      "MinimumVersion": "2.3.0"
+    }
+  ]
+}
