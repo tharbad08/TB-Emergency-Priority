@@ -11,5 +11,5 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Lib.Harmony" Version="2.4.1" />
-  </ItemGroup>
+  </ItemGroup>\n  <ItemGroup>\n    <ProjectReference Include="Stubs/Timberborn.ModManagerScene/Timberborn.ModManagerScene.Stub.csproj" Private="false" />\n  </ItemGroup>
 </Project>
