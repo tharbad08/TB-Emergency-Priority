@@ -1,0 +1,11 @@
+{
+  "Name": "Emergency Priority 1.1 Compatibility Audit",
+  "Version": "0.1.0",
+  "Id": "EmergencyPriorityCompatAudit",
+  "MinimumGameVersion": "1.1.1.0",
+  "Description": "Compatibility guard and full IL/API audit for the original Emergency Priority [ModContest1] Workshop mod.",
+  "RequiredMods": [
+    { "Id": "Harmony" },
+    { "Id": "grantemsley.EmergencyPriority" }
+  ]
+}
